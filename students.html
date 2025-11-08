@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生签到系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+        body { background: linear-gradient(135deg, #2c3e50, #3498db); min-height: 100vh; padding: 20px; display: flex; align-items: center; justify-content: center; }
+        .container { max-width: 500px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); overflow: hidden; }
+        .header { background: #667eea; color: white; padding: 25px; text-align: center; }
+        .header h1 { font-size: 28px; margin-bottom: 5px; }
+        .content { padding: 25px; }
+        
+        .panel { background: #f8f9fa; padding: 20px; border-radius: 15px; border-left: 5px solid #667eea; margin-bottom: 20px; }
+        .panel h2 { color: #2c3e50; margin-bottom: 15px; font-size: 20px; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 14px; }
+        input { width: 100%; padding: 12px; border: 2px solid #e1e5ee; border-radius: 8px; font-size: 16px; }
+        input:focus { border-color: #667eea; outline: none; }
+        
+        button { 
+            background: #667eea; color: white; border: none; padding: 12px 20px; 
+            border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; 
+            transition: all 0.3s; margin-top: 10px;
+        }
+        button:hover { background: #5a6fd8; transform: translateY(-2px); }
+        button:disabled { background: #95a5a6; cursor: not-allowed; transform: none; }
+        
+        .student-message { 
+            padding: 12px; border-radius: 8px; margin-top: 15px; 
+            text-align: center; display: none; font-size: 14px;
+        }
+        .student-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .student-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .student-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        
+        .loading { opacity: 0.7; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 学生签到</h1>
+            <p>请输入您的信息完成签到</p>
+        </div>
+        
+        <div class="content">
+            <!-- 学生签到表单 -->
+            <div class="panel">
+                <h2>✏️ 填写信息</h2>
+                
+                <form id="studentSigninForm">
+                    <div class="form-group">
+                        <label for="studentId">学号</label>
+                        <input type="text" id="studentId" name="studentId" placeholder="请输入学号" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="studentName">姓名</label>
+                        <input type="text" id="studentName" name="studentName" placeholder="请输入姓名" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="studentClass">班级</label>
+                        <input type="text" id="studentClass" name="studentClass" placeholder="请输入班级" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="studentSpecialCode">特殊指令</label>
+                        <input type="text" id="studentSpecialCode" name="studentSpecialCode" placeholder="请输入特殊指令" required>
+                    </div>
+                    
+                    <button type="submit" id="studentSubmitBtn">提交签到</button>
+                </form>
+                
+                <div class="student-message" id="studentMessage"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 固定配置
+        const GITHUB_CONFIG = {
+            username: 'so-far-away0408',
+            repo: 'signin_system',
+            token: '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',
+            classId: 'material243'
+        };
+
+        // 当前指令信息
+        let currentInstruction = null;
+        let studentRecords = JSON.parse(localStorage.getItem('studentRecords')) || [];
+        let deviceFingerprint = generateDeviceFingerprint();
+
+        // 初始化
+        async function init() {
+            // 自动加载指令
+            await loadCurrentInstruction();
+            
+            // 初始化表单提交
+            initStudentSignin();
+            
+            // 每分钟自动刷新指令
+            setInterval(loadCurrentInstruction, 60000);
+        }
+
+        // 加载当前指令
+        async function loadCurrentInstruction() {
+            try {
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/instructions/${GITHUB_CONFIG.classId}.json`,
+                    {
+                        headers: {
+                            'Authorization': `token ${GITHUB_CONFIG.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const content = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                    
+                    if (content.classId === GITHUB_CONFIG.classId) {
+                        currentInstruction = content;
+                    }
+                }
+            } catch (error) {
+                console.error('获取指令失败:', error);
+            }
+        }
+
+        // 学生签到功能
+        function initStudentSignin() {
+            document.getElementById('studentSigninForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const submitBtn = document.getElementById('studentSubmitBtn');
+                const originalText = submitBtn.innerHTML;
+                
+                // 禁用按钮并显示加载状态
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '🔄 提交中...';
+                document.getElementById('studentSigninForm').classList.add('loading');
+                
+                const studentId = document.getElementById('studentId').value.trim();
+                const studentName = document.getElementById('studentName').value.trim();
+                const studentClass = document.getElementById('studentClass').value.trim();
+                const specialCode = document.getElementById('studentSpecialCode').value.trim();
+                
+                try {
+                    if (!studentId || !studentName || !studentClass || !specialCode) {
+                        throw new Error('请填写完整信息');
+                    }
+                    
+                    if (!currentInstruction) {
+                        throw new Error('系统初始化中，请稍后重试');
+                    }
+                    
+                    if (hasSignedInToday()) {
+                        throw new Error('您今天已经签到过了');
+                    }
+                    
+                    if (!validateSpecialCode(specialCode)) {
+                        throw new Error('特殊指令不正确');
+                    }
+                    
+                    // 创建签到记录
+                    const record = {
+                        studentId: studentId,
+                        name: studentName,
+                        className: studentClass,
+                        specialCode: specialCode,
+                        timestamp: new Date().toISOString(),
+                        deviceId: deviceFingerprint,
+                        classId: GITHUB_CONFIG.classId
+                    };
+                    
+                    // 上传到GitHub
+                    await uploadSigninRecord(record);
+                    
+                    // 保存到本地记录
+                    studentRecords.push(record);
+                    localStorage.setItem('studentRecords', JSON.stringify(studentRecords));
+                    
+                    showMessage(`✅ 签到成功！欢迎 ${studentName} 同学`, 'success');
+                    
+                    // 清空表单
+                    document.getElementById('studentSigninForm').reset();
+                    
+                } catch (error) {
+                    showMessage(`❌ ${error.message}`, 'error');
+                } finally {
+                    // 恢复按钮状态
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                    document.getElementById('studentSigninForm').classList.remove('loading');
+                }
+            });
+        }
+
+        // 验证特殊指令
+        function validateSpecialCode(specialCode) {
+            if (!currentInstruction) return false;
+            
+            // 检查指令是否过期
+            if (currentInstruction.instructionExpiresAt) {
+                const now = new Date();
+                const expiresAt = new Date(currentInstruction.instructionExpiresAt);
+                if (now > expiresAt) {
+                    throw new Error('指令已过期，请刷新页面重试');
+                }
+            }
+            
+            const pattern = currentInstruction.instructionPattern.replace(/“([^”]*)”/g, '$1');
+            const expectedCode = pattern.replace('X', currentInstruction.randomValue);
+            
+            return specialCode === expectedCode;
+        }
+
+        // 检查今天是否已签到
+        function hasSignedInToday() {
+            const today = new Date().toDateString();
+            return studentRecords.some(record => 
+                new Date(record.timestamp).toDateString() === today && 
+                record.deviceId === deviceFingerprint
+            );
+        }
+
+        // 上传签到记录到GitHub
+        async function uploadSigninRecord(record) {
+            const fileName = `signin-data/${GITHUB_CONFIG.classId}-records.json`;
+            let existingRecords = [];
+            
+            try {
+                // 尝试获取现有记录
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${fileName}`,
+                    { headers: { 'Authorization': `token ${GITHUB_CONFIG.token}` } }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const content = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                    existingRecords = content.records || [];
+                }
+            } catch (error) {
+                // 文件不存在，创建新文件
+            }
+            
+            // 添加新记录
+            existingRecords.push(record);
+            
+            // 准备上传内容
+            const content = {
+                records: existingRecords,
+                lastUpdate: new Date().toISOString(),
+                totalCount: existingRecords.length
+            };
+            
+            // 上传到GitHub
+            const updateResponse = await fetch(
+                `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${fileName}`,
+                {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `token ${GITHUB_CONFIG.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `学生签到 - ${record.name} - ${new Date().toLocaleString()}`,
+                        content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
+                        sha: await getFileSHA(fileName)
+                    })
+                }
+            );
+            
+            if (!updateResponse.ok) {
+                throw new Error('上传签到记录失败');
+            }
+        }
+
+        // 获取文件SHA
+        async function getFileSHA(filePath) {
+            try {
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${filePath}`,
+                    { headers: { 'Authorization': `token ${GITHUB_CONFIG.token}` } }
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.sha;
+                }
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // 设备指纹生成
+        function generateDeviceFingerprint() {
+            const components = [
+                navigator.userAgent,
+                navigator.language,
+                navigator.hardwareConcurrency || 'unknown',
+                screen.width + 'x' + screen.height,
+                new Date().getTimezoneOffset(),
+                navigator.platform
+            ];
+            
+            let hash = 0;
+            const str = components.join('|');
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return 'device_' + Math.abs(hash).toString(16);
+        }
+
+        // 显示消息
+        function showMessage(text, type) {
+            const messageElement = document.getElementById('studentMessage');
+            messageElement.textContent = text;
+            messageElement.className = `student-message student-${type}`;
+            messageElement.style.display = 'block';
+            
+            setTimeout(() => {
+                messageElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // 页面加载时初始化
+        window.onload = init;
+    </script>
+</body>
+</html>
