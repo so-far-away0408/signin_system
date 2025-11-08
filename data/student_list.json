@@ -1,1 +1,27 @@
-
+[
+  {
+    "studentId": "3240112001",
+    "name": "张三",
+    "className": "材卓243"
+  },
+  {
+    "studentId": "3240112002",
+    "name": "李四", 
+    "className": "材卓243"
+  },
+  {
+    "studentId": "3240112003",
+    "name": "王五",
+    "className": "材233"
+  },
+  {
+    "studentId": "3240112004",
+    "name": "赵六",
+    "className": "材233"
+  },
+  {
+    "studentId": "3240112005",
+    "name": "钱七",
+    "className": "成型231"
+  }
+]
