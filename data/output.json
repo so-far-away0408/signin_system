@@ -1,0 +1,18 @@
+{
+  "lastUpdated": "2025-11-08T15:57:06.199Z",
+  "attendance": [
+    {
+      "name": "学生A",
+      "time": "2025-11-08T15:57:06.198Z",
+      "status": "present"
+    },
+    {
+      "name": "学生B",
+      "time": "2025-11-08T15:57:06.198Z",
+      "status": "absent"
+    }
+  ],
+  "total": 2,
+  "present": 1,
+  "absent": 1
+}
