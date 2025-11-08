@@ -1,0 +1,40 @@
+# 文件名：.github/workflows/update-attendance.yml
+name: Update Attendance Data
+
+on:
+  # 方式1：手动触发
+  workflow_dispatch:
+  # 方式2：定时触发（每5分钟）
+  schedule:
+    - cron: '*/5 * * * *'
+  # 方式3：当特定文件变化时触发
+  push:
+    paths:
+      - 'data/input.json'
+      - 'scripts/**'
+
+jobs:
+  process-data:
+    runs-on: ubuntu-latest
+    # 关键：添加写入权限
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # 关键：获取完整历史，才能git push
+        fetch-depth: 0
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Process attendance data
+      env:
+        # 使用自动提供的token，但有写入权限了
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # 这里调用你的处理脚本
+        node scripts/process-attendance.js
