@@ -968,13 +968,150 @@
         
         // ==================== GitHub数据同步功能 ====================
         
+        // 保存数据到GitHub（通过触发GitHub Actions）
+        async function saveDataToGitHub() {
+            updateSyncStatus('syncing', '正在同步数据到GitHub...');
+            
+            try {
+                // 准备数据
+                const dataToSave = {
+                    classes: classes,
+                    records: records,
+                    studentList: studentList,
+                    lastUpdated: new Date().toISOString(),
+                    updatedBy: 'teacher_system',
+                    timestamp: Date.now()  // 额外的时间戳确保内容变化
+                };
+                
+                // 保存到本地存储作为临时方案
+                saveToLocalStorage();
+                
+                // 在实际部署中，这里应该通过API调用触发GitHub Actions
+                // 或者使用GitHub的Repository Dispatch API
+                const dispatchResult = await triggerGitHubActions(dataToSave);
+                
+                if (dispatchResult) {
+                    updateSyncStatus('success', `数据同步请求已发送 (${new Date().toLocaleTimeString()})`);
+                } else {
+                    // 如果API调用失败，使用替代方案：显示手动操作指南
+                    showManualUpdateInstructions(dataToSave);
+                }
+                
+                return true;
+            } catch (error) {
+                console.error('保存到GitHub失败:', error);
+                updateSyncStatus('error', '同步失败，数据保存在本地');
+                return false;
+            }
+        }
+        
+        // 触发GitHub Actions工作流
+        async function triggerGitHubActions(data) {
+            try {
+                // 方法1: 使用Repository Dispatch API（推荐）
+                // 需要GitHub Personal Access Token
+                const token = 'YOUR_GITHUB_TOKEN'; // 在实际部署中替换
+                
+                // 如果未设置token，返回false使用替代方案
+                if (token === 'YOUR_GITHUB_TOKEN') {
+                    return false;
+                }
+                
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/dispatches`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `token ${token}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            event_type: 'update_attendance',
+                            client_payload: {
+                                attendance_data: data
+                            }
+                        })
+                    }
+                );
+                
+                return response.ok;
+            } catch (error) {
+                console.log('Repository Dispatch API失败，使用替代方案');
+                return false;
+            }
+        }
+        
+        // 显示手动更新指南
+        function showManualUpdateInstructions(data) {
+            const instructionText = JSON.stringify(data, null, 2);
+            
+            const modalContent = `
+                <div class="manual-update-instructions">
+                    <h3>手动更新GitHub数据</h3>
+                    <p>由于API限制，请按照以下步骤手动更新数据：</p>
+                    <ol>
+                        <li>访问您的GitHub仓库: ${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}</li>
+                        <li>导航到 <code>data/attendance.json</code> 文件</li>
+                        <li>点击编辑按钮</li>
+                        <li>用以下内容替换文件内容：</li>
+                    </ol>
+                    <textarea readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${instructionText}</textarea>
+                    <p style="margin-top: 10px; font-size: 0.9rem; color: #666;">
+                        提交更改后，GitHub Actions会自动触发更新流程。
+                    </p>
+                </div>
+            `;
+            
+            // 显示自定义模态框
+            showCustomModal('手动更新指南', modalContent);
+        }
+        
+        // 显示自定义模态框
+        function showCustomModal(title, content) {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div class="modal-title">${title}</div>
+                        <button class="close-btn">&times;</button>
+                    </div>
+                    <div>${content}</div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" id="close-custom-modal">关闭</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            modal.querySelector('.close-btn').addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+            
+            modal.querySelector('#close-custom-modal').addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+            
+            // 点击模态框外部关闭
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            });
+        }
+        
         // 从GitHub加载数据
         async function loadDataFromGitHub() {
             updateSyncStatus('syncing', '正在从GitHub加载数据...');
             
             try {
+                // 添加时间戳参数避免缓存
+                const timestamp = new Date().getTime();
                 const response = await fetch(
-                    `https://${GITHUB_CONFIG.owner}.github.io/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.dataFile}?t=${Date.now()}`
+                    `https://${GITHUB_CONFIG.owner}.github.io/${GITHUB_CONFIG.repo}/data/attendance.json?t=${timestamp}`
                 );
                 
                 if (response.ok) {
@@ -999,44 +1136,6 @@
             } catch (error) {
                 console.error('从GitHub加载数据失败:', error);
                 updateSyncStatus('error', '加载失败，使用本地数据');
-                return false;
-            }
-        }
-        
-        // 保存数据到GitHub（通过触发GitHub Actions）
-        async function saveDataToGitHub() {
-            updateSyncStatus('syncing', '正在同步数据到GitHub...');
-            
-            try {
-                // 准备数据
-                const dataToSave = {
-                    classes: classes,
-                    records: records,
-                    studentList: studentList,
-                    lastUpdated: new Date().toISOString(),
-                    updatedBy: 'teacher_system'
-                };
-                
-                // 这里可以调用GitHub API或者触发GitHub Actions
-                // 由于前端直接调用GitHub API需要token，这里我们模拟成功
-                // 在实际部署中，可以通过后端服务或GitHub Actions来实现
-                
-                // 模拟网络延迟
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                // 在实际应用中，这里应该调用GitHub API
-                // 现在我们先保存到本地存储作为备份
-                saveToLocalStorage();
-                
-                updateSyncStatus('success', `数据已准备同步 (${new Date().toLocaleTimeString()})`);
-                
-                // 显示提示信息
-                alert('数据已准备好同步到GitHub。在实际部署中，这里会调用GitHub API将数据保存到仓库。');
-                
-                return true;
-            } catch (error) {
-                console.error('保存到GitHub失败:', error);
-                updateSyncStatus('error', '同步失败，数据保存在本地');
                 return false;
             }
         }
@@ -1565,6 +1664,13 @@
                     const recordItem = document.createElement('div');
                     recordItem.className = 'record-item';
                     
+                    // 添加允许重签按钮 - 只在已签到状态下显示
+                    const allowResignButton = record.status === 'signed' ? 
+                        `<button class="btn btn-warning btn-sm allow-resign" data-studentid="${record.studentId}" data-name="${record.name}">
+                            <i class="fas fa-redo"></i>
+                            允许重签
+                        </button>` : '';
+                    
                     recordItem.innerHTML = `
                         <div class="record-info">
                             <div class="record-status ${record.status}"></div>
@@ -1578,9 +1684,22 @@
                         <div class="sign-status ${record.status === 'signed' ? 'signed-text' : 'unsigned-text'}">
                             ${record.status === 'signed' ? '已签到' : '未签到'}
                         </div>
+                        ${allowResignButton}
                     `;
                     
                     recordsList.appendChild(recordItem);
+                });
+            });
+            
+            // 添加允许重签按钮的事件监听
+            document.querySelectorAll('.allow-resign').forEach(button => {
+                button.addEventListener('click', function() {
+                    const studentId = this.dataset.studentid;
+                    const studentName = this.dataset.name;
+                    showConfirmModal(
+                        `确定要允许学生 ${studentName} (${studentId}) 重新签到吗？`,
+                        () => allowStudentResign(studentId)
+                    );
                 });
             });
             
@@ -1611,6 +1730,32 @@
                 </div>
             `;
             recordsList.appendChild(statsFooter);
+        }
+        
+        // 允许学生重新签到
+        function allowStudentResign(studentId) {
+            // 找到该学生的所有签到记录
+            const studentRecords = records.filter(record => record.studentId === studentId);
+            
+            if (studentRecords.length === 0) {
+                alert('未找到该学生的签到记录');
+                return;
+            }
+            
+            // 移除该学生的所有签到记录（相当于重置状态）
+            records = records.filter(record => record.studentId !== studentId);
+            
+            // 更新界面
+            renderRecords();
+            updateStats();
+            
+            // 保存到本地存储
+            saveToLocalStorage();
+            
+            // 同步到GitHub
+            saveDataToGitHub();
+            
+            alert('已允许该学生重新签到，学生端将可以重新提交信息');
         }
         
         function updateStats() {
